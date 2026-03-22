@@ -5,6 +5,7 @@
   "description": "Scrapes hourly temperature and cloud/sun data from WetterOnline and publishes via MQTT with auto-discovery.",
   "startup": "services",
   "boot": "auto",
+  "type": "addon",
   "arch": ["amd64", "aarch64"],
   "options": {
     "location": "grafing",
