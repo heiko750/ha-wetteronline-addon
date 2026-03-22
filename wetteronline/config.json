@@ -17,9 +17,5 @@
     "interval": "int",
     "mqtt_host": "str",
     "mqtt_port": "int"
-  },
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
   }
 }
