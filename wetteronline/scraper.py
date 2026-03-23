@@ -49,6 +49,13 @@ async def scrape():
         page = await browser.new_page()
 
         await page.goto(URL, timeout=60000, wait_until="networkidle") # Wartet, bis Ruhe einkehrt
+        # Debug: Warte kurz und mach ein Bild von dem, was Playwright sieht
+        await asyncio.sleep(5)
+        await page.screenshot(path="/config/wetter_debug.png")
+        # Zeige den HTML-Inhalt (die ersten 500 Zeichen) im Log
+        content = await page.content()
+        print(f"DEBUG: HTML-Anfang: {content[:500]}")
+        
         try:
             # Versuche den "Akzeptieren"-Button zu klicken (ID/Selektor variiert oft)
             await page.click("text=Akzeptieren", timeout=5000)
