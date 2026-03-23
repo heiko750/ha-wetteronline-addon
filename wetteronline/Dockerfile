@@ -1,24 +1,21 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# Installiert System-Abhängigkeiten für Playwright & Chromium
+# Installiert Chromium und System-Abhängigkeiten für Playwright
 RUN apk add --no-cache \
-    python3-dev \
-    gcc \
-    musl-dev \
-    playwright \
     chromium \
     nss \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    dbus
 
-# Install Python dependencies
+# Playwright Python-Paket und Abhängigkeiten installieren
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
 
-# WICHTIG: Playwright sagen, dass es den System-Chromium nutzen soll
+# Umgebungsvariablen: Playwright sagen, dass es den System-Browser nutzen soll
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROME_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
