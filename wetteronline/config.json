@@ -6,6 +6,7 @@
   "startup": "services",
   "boot": "auto",
   "type": "addon",
+  "init": false,
   "arch": ["amd64", "aarch64"],
   "options": {
     "location": "grafing",
