@@ -1,7 +1,7 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+# Ersetze ARG und FROM durch diesen festen Wert:
+FROM ghcr.io/home-assistant/aarch64-base-debian-python:3.12
 
-# 1. System-Pakete für Debian installieren (inkl. Chromium)
+# 1. System-Pakete für Debian installieren
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
@@ -16,10 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# 3. Playwright auf Debian installieren (hier findet pip ein passendes Paket!)
+# 3. Playwright installieren
 RUN pip3 install --no-cache-dir playwright
 
-# 4. Umgebungsvariablen für Playwright
+# 4. Umgebungsvariablen
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROME_EXECUTABLE_PATH=/usr/bin/chromium
 
