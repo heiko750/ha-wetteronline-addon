@@ -1,5 +1,5 @@
 # Ersetze ARG und FROM durch diesen festen Wert:
-FROM ghcr.io/home-assistant/aarch64-base-debian-python:3.12
+FROM homeassistant/aarch64-base-debian:bookworm
 
 # 1. System-Pakete für Debian installieren
 RUN apt-get update && apt-get install -y --no-install-recommends \
