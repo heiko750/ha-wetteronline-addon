@@ -10,7 +10,7 @@ LOCATION = os.getenv("LOCATION", "grafing")
 
 URL = f"https://www.wetteronline.de/wetter/{LOCATION}"
 
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.connect(MQTT_HOST, MQTT_PORT, 60)
 
 published_discovery = set()
