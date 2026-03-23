@@ -1,15 +1,14 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+ARG BUILD_FROM=ghcr.io/hassio-addons/base-python:17.0.0
+FROM ${BUILD_FROM}
+
+# Install pip (Base-Python hat pip nicht vorinstalliert)
+RUN apk add --no-cache py3-pip
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy your Python script
-COPY scraper.py /usr/src/app/scraper.py
+COPY scraper.py /app/scraper.py
 
-# Copy run script
-COPY run.sh /run.sh
-RUN chmod a+x /run.sh
-
-CMD [ "/run.sh" ]
+CMD ["python3", "/app/scraper.py"]
