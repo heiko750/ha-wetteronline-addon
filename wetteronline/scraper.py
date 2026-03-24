@@ -46,28 +46,39 @@ async def scrape():
         print(f"STARTE MITTWOCHS-ABFRAGE: {URL}")
         
         try:
-            # Seite laden
+            # 1. Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             
-            # BANNER-KILLER: Wir loeschen alle Overlays radikal per JavaScript
-            await page.evaluate("""() => {
-                document.querySelectorAll('iframe, [id*="sp_message"], [class*="sp-message"]').forEach(el => el.remove());
-                document.body.style.overflow = 'visible';
-            }""")
-            
-            print("Banner entfernt. Suche stündliche Daten...")
-            await asyncio.sleep(10) 
-            
-            # Wir nutzen JavaScript, um die Daten direkt aus den Elementen zu ziehen
-            # Das umgeht den fehleranfaelligen Quelltext-Scan
+            # 2. Banner-Killer
+            await page.evaluate("() => { document.querySelectorAll('iframe, [id*=\"sp_message\"]').forEach(el => el.remove()); }")
+            print("Warte auf Shadow-DOM Inhalte...")
+            await asyncio.sleep(15) 
+
+            # 3. SHADOW-DOM BYPASS (Der entscheidende Teil)
             data = await page.evaluate("""
                 () => {
                     const results = [];
-                    const nodes = document.querySelectorAll('wo-forecast-hour, .forecast-hour');
-                    nodes.forEach(n => {
-                        const h = n.querySelector('wo-date-hour, .date-hour')?.innerText;
-                        const t = n.querySelector('.temperature')?.innerText;
-                        if(h && t) results.push({h: h.trim(), t: t.replace('°','').trim()});
+                    // Diese Funktion taucht tief in die versteckten Shadow-Roots ab
+                    const findInShadow = (root, selector) => {
+                        let found = Array.from(root.querySelectorAll(selector));
+                        root.querySelectorAll('*').forEach(el => {
+                            if (el.shadowRoot) {
+                                found = found.concat(findInShadow(el.shadowRoot, selector));
+                            }
+                        });
+                        return found;
+                    };
+
+                    const blocks = findInShadow(document, 'wo-forecast-hour, .forecast-hour');
+                    blocks.forEach(b => {
+                        const h = b.querySelector('wo-date-hour, .date-hour')?.textContent;
+                        const t = b.querySelector('.temperature')?.textContent;
+                        if (h && t) {
+                            results.push({
+                                hour: h.trim(), 
+                                temp: t.trim().replace(/[^0-9-]/g, '')
+                            });
+                        }
                     });
                     return results;
                 }
@@ -81,23 +92,24 @@ async def scrape():
                 
                 seen_hours = set()
                 for entry in data:
-                    h_name = entry['h']
-                    t_val = entry['t']
+                    h_name = entry['hour']
+                    t_val = entry['temp']
                     if h_name not in seen_hours and len(seen_hours) < 24:
                         h_id = h_name.replace(":", "")
                         send_discovery(h_id, h_name)
                         client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                        print(f"Update -> {h_name}: {t_val}°C")
+                        print(f"Gelesen -> {h_name}: {t_val}°C")
                         seen_hours.add(h_name)
                 
+                time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Immer noch keine neuen Daten. Versuche Screenshot...")
-                await page.screenshot(path="/usr/src/app/debug.png")
+                print("Daten immer noch im Shadow-DOM gesperrt.")
 
         except Exception as e:
             print(f"FEHLER: {e}")
+
         await browser.close()
 
 
