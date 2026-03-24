@@ -40,17 +40,16 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
 
         try:
-            # Wir warten NICHT mehr auf networkidle, sondern nur auf das HTML-Gerüst
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            print("Seite geladen, simuliere Scrollen...")
             
-            # Wir geben der Seite 10 Sekunden Zeit zum "Atmen" und Rendern
-            print("Seite geladen, warte auf Daten-Rendering...")
-            await asyncio.sleep(10) 
+            # Wir scrollen 2000 Pixel nach unten, um das Nachladen zu triggern
+            await page.mouse.wheel(0, 2000)
+            await asyncio.sleep(8) # Zeit zum Rendern geben
             
             content = await page.content()
             
-            # Wir suchen nach JEDER Uhrzeit XX:00 und der NÄCHSTEN Zahl danach.
-            # Muster: Uhrzeit -> irgendwas -> > (Leerzeichen) Zahl (Leerzeichen) <
+            # Unser robuster Regex fuer Uhrzeit -> Zahl zwischen > <
             pairs = re.findall(r'(\d{2}:00).*?>\s*(\-?\d+)\s*<', content, re.DOTALL)
 
             if pairs:
@@ -63,7 +62,6 @@ async def scrape():
                 for h_name, t_val in pairs:
                     if h_name not in seen_hours and len(seen_hours) < 24:
                         temp_int = int(t_val)
-                        # Nur plausible Temperaturen nehmen
                         if -25 < temp_int < 45:
                             h_id = h_name.replace(":", "")
                             send_discovery(h_id, h_name)
@@ -71,11 +69,10 @@ async def scrape():
                             print(f"Gelesen -> {h_name}: {t_val}°C")
                             seen_hours.add(h_name)
                 
-                time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Daten im Text gefunden. Erstelle Screenshot zur Analyse...")
+                print("Keine Daten gefunden. Mache Screenshot...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
