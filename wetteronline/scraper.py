@@ -43,23 +43,41 @@ async def scrape():
             # [^>]* greift die dynamischen IDs ab, (\-?\d+) die Temperaturzahl
             pairs = re.findall(r'>(\d{2}:00)</wo-date-hour>.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
 
-            if pairs:
-                print(f"ERFOLG: {len(pairs)} stündliche Paare gefunden!")
+        try:
+            await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(5)
+            content = await page.content()
+            
+            # Wir suchen eine Uhrzeit (XX:00) und danach die nächste Temperatur (X°) 
+            # oder die nächste Zahl in der "temperature" Klasse.
+            # Der Trick: Wir suchen ALLES, was wie eine Stunde aussieht, 
+            # und greifen uns die Zahl direkt danach.
+            found_data = []
+            # Wir suchen nach Uhrzeit-Mustern (z.B. 22:00)
+            all_hours = re.findall(r'(\d{2}:00)', content)
+            # Wir suchen nach Temperatur-Mustern (z.B. 5°) oder nackten Zahlen in Temp-Klassen
+            all_temps = re.findall(r'(\-?\d+)°', content)
+
+            if len(all_temps) >= 16:
+                print(f"ERFOLG: {len(all_temps)} Temperaturen gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 
-                for h_name, t_val in pairs[:24]: # Nimm die nächsten 24 verfügbaren Stunden
-                    h_id = h_name.replace(":", "")
+                # Wir nutzen die aktuelle Stunde als Startpunkt für die 16 Werte
+                start_hour = datetime.now().hour
+                for i in range(16):
+                    current_h = (start_hour + i) % 24
+                    h_name = f"{current_h:02d}:00"
+                    h_id = f"{current_h:02d}00"
+                    t_val = all_temps[i]
+                    
                     send_discovery(h_id, h_name)
                     client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
                     print(f"Gelesen -> {h_name}: {t_val}°C")
                 
                 client.disconnect()
             else:
-                print("Muster nicht gefunden. Versuche Fallback-Suche...")
-                # Falls die Tags fehlen, nehmen wir alle Zahlen mit ° (dein alter Erfolgsweg)
-                fallback_temps = re.findall(r'(\-?\d+)°', content)
-                print(f"Fallback ergab {len(fallback_temps)} Treffer.")
+                print(f"Zu wenig Daten im Quelltext ({len(all_temps)}).")
 
         except Exception as e:
             print(f"FEHLER: {e}")
