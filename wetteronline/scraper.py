@@ -43,35 +43,29 @@ async def scrape():
             await asyncio.sleep(5)
             content = await page.content()
             
-            # Wir extrahieren alle Zahlen vor einem Grad-Symbol. 
-            # Da WetterOnline die Stunden chronologisch auflistet, 
-            # sind die ersten 16 Treffer nach dem Header die Vorhersage-Werte.
-            all_temps = re.findall(r'(\-?\d+)°', content)
+            # Wir suchen Paare: Erst die Uhrzeit im Tag, dann die Temperatur im Div
+            # Beispiel: >22:00</wo-date-hour>...class="temperature"> 6
+            # [^>]* fängt die dynamischen IDs (_ngcontent...) ab
+            pairs = re.findall(r'>(\d{2}:00)</wo-date-hour>.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
 
-            if len(all_temps) >= 16:
-                print(f"ERFOLG: {len(all_temps)} Temperaturen gefunden!")
+            if pairs:
+                print(f"PRÄZISIONS-ERFOLG: {len(pairs)} Stunden-Paare gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
-                # Wir bestimmen die aktuelle Stunde als Startpunkt
-                start_hour = datetime.now().hour
-                
-                for i in range(16):
-                    current_h = (start_hour + i) % 24
-                    h_name = f"{current_h:02d}:00"
-                    h_id = f"{current_h:02d}00"
-                    t_val = all_temps[i]
+                for h_name, t_val in pairs[:24]:
+                    h_id = h_name.replace(":", "")
                     
                     send_discovery(h_id, h_name)
                     client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                    print(f"Update -> {h_name}: {t_val}°C")
+                    print(f"Gelesen -> {h_name}: {t_val}°C")
                 
                 time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print(f"Zu wenig Daten im Quelltext gefunden ({len(all_temps)} Treffer).")
+                print("Muster nicht gefunden. Prüfe Quelltext-Struktur...")
 
         except Exception as e:
             print(f"FEHLER: {e}")
