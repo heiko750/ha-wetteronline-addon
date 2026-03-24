@@ -8,7 +8,7 @@
   "type": "addon",
   "env": {
     "PYTHONUNBUFFERED": "1"
-  }
+  },
   "init": false,
   "arch": ["amd64", "aarch64"],
   "options": {
