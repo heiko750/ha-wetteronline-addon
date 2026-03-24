@@ -13,7 +13,7 @@ LOCATION = os.getenv("LOCATION", "grafing")
 MQTT_USER = os.getenv("MQTT_USER")
 MQTT_PASS = os.getenv("MQTT_PASSWORD")
 
-URL = f"https://www.wetteronline.de{LOCATION.lstrip('/')}"
+URL = f"https://www.wetteronline.de/wetter/{LOCATION.lstrip('/')}"
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
