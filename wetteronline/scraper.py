@@ -36,33 +36,40 @@ async def scrape():
         
         try:
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(10) # Zeit zum Laden der Basistabelle
+            print("Seite geladen, starte Tiefen-Analyse...")
+            await asyncio.sleep(15) # Viel Zeit fuer den ODROID
+            
             content = await page.content()
             
-            # Die stabile Suche nach Zeit und Temperatur-Paaren
-            # Sucht: >22:00< gefolgt von irgendwas und dann class="temperature"> 6
-            pairs = re.findall(r'>(\d{2}:00)<.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
+            # Wir suchen: (Uhrzeit XX:00) -> irgendwas -> > (Zahl) <
+            # Das ist extrem tolerant gegen Layout-Aenderungen
+            pairs = re.findall(r'(\d{2}:00).*?>\s*(\-?\d+)\s*<', content, re.DOTALL)
 
             if pairs:
-                print(f"ERFOLG: {len(pairs)} stabile Paare gefunden!")
+                print(f"ERFOLG: {len(pairs)} Paare im Rohtext gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
                 seen_hours = set()
                 for h_name, t_val in pairs:
-                    if h_name not in seen_hours and len(seen_hours) < 12:
-                        h_id = h_name.replace(":", "")
-                        send_discovery(h_id, h_name)
-                        client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                        print(f"Gelesen -> {h_name}: {t_val}°C")
-                        seen_hours.add(h_name)
+                    if h_name not in seen_hours and len(seen_hours) < 16:
+                        # Plausibilitaets-Check: Temperaturen zwischen -20 und +40
+                        if -20 < int(t_val) < 40:
+                            h_id = h_name.replace(":", "")
+                            send_discovery(h_id, h_name)
+                            client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
+                            print(f"Gelesen -> {h_name}: {t_val}°C")
+                            seen_hours.add(h_name)
                 
                 time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Paare gefunden. Seite eventuell noch im Aufbau.")
+                print("Absolut nichts gefunden. Letzter Versuch: Alle Zahlen mit Grad-Symbol...")
+                fallback = re.findall(r'(\-?\d+)°', content)
+                print(f"Fallback ergab {len(fallback)} Treffer.")
+
 
         except Exception as e:
             print(f"FEHLER: {e}")
