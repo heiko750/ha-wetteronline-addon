@@ -60,36 +60,50 @@ async def scrape():
         try:
             # Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite geladen, warte auf Rendering...")
-            await asyncio.sleep(10) 
+            print("Seite geladen, extrahiere Daten...")
+            await asyncio.sleep(10) # Zeit zum Rendern geben
             
-            content = await page.content()
-            
-            # Unser robuster Regex für Uhrzeit -> Zahl zwischen > <
-            pairs = re.findall(r'(\d{2}:00).*?>\s*(\-?\d+)\s*<', content, re.DOTALL)
+            # Wir nutzen JavaScript, um die Paare DIREKT aus den Elementen zu lesen.
+            # Wir suchen das div mit der Klasse 'temperature' innerhalb des Stunden-Blocks.
+            data = await page.evaluate("""
+                () => {
+                    const results = [];
+                    // Suche alle Stunden-Container
+                    const blocks = document.querySelectorAll('wo-forecast-hour, .forecast-hour');
+                    blocks.forEach(b => {
+                        const h = b.querySelector('wo-date-hour, .date-hour')?.innerText;
+                        const t = b.querySelector('.temperature')?.innerText;
+                        if (h && t) {
+                            // Wir bereinigen die Temperatur (nur die Zahl extrahieren)
+                            results.push({hour: h.trim(), temp: t.trim()});
+                        }
+                    });
+                    return results;
+                }
+            """)
 
-            if pairs:
-                print(f"ERFOLG: {len(pairs)} Paare im Rohtext gefunden!")
+            if data:
+                print(f"ERFOLG: {len(data)} saubere Wetter-Paare gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
                 seen_hours = set()
-                for h_name, t_val in pairs:
+                for entry in data:
+                    h_name = entry['hour']
+                    t_val = entry['temp']
                     if h_name not in seen_hours and len(seen_hours) < 24:
-                        temp_int = int(t_val)
-                        if -25 < temp_int < 45:
-                            h_id = h_name.replace(":", "")
-                            send_discovery(h_id, h_name)
-                            client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                            print(f"Gelesen -> {h_name}: {t_val}°C")
-                            seen_hours.add(h_name)
+                        h_id = h_name.replace(":", "")
+                        send_discovery(h_id, h_name)
+                        client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
+                        print(f"Gelesen -> {h_name}: {t_val}°C")
+                        seen_hours.add(h_name)
                 
                 time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Daten gefunden. Screenshot wird erstellt...")
+                print("Keine Wetter-Elemente gefunden. Erstelle Screenshot...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
