@@ -7,17 +7,18 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 import paho.mqtt.client as mqtt
 
-# Konfiguration
+# --- KONFIGURATION ---
 MQTT_HOST = "172.30.32.1"
 MQTT_USER = os.getenv("MQTT_USER", "mqtt-user")
 MQTT_PASS = os.getenv("MQTT_PASSWORD")
 LOCATION = os.getenv("LOCATION", "grafing")
+
+# Die URL muss hier definiert sein!
 URL = f"https://www.wetteronline.de/wetter/{LOCATION.strip('/')}"
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
 def send_discovery(h_id, h_name):
-    """Erstellt die Sensoren automatisch in Home Assistant"""
     topic = f"homeassistant/sensor/wo_{h_id}/config"
     payload = {
         "name": f"WO {h_name}",
@@ -31,33 +32,40 @@ def send_discovery(h_id, h_name):
 
 async def scrape():
     async with async_playwright() as p:
+        # 1. Browser starten
         browser = await p.chromium.launch(
             executable_path="/usr/bin/chromium", 
             headless=True, 
             args=["--no-sandbox", "--disable-setuid-sandbox"]
         )
-        page = await browser.new_page()
+        
+        # 2. Kontext erstellen (Hier werden Cookies und Viewport gesetzt)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            viewport={"width": 1280, "height": 3000}
+        )
+        
+        # 3. Cookie setzen, um den Banner zu umgehen
+        await context.add_cookies([{
+            "name": "euconsent-v2",
+            "value": "CP-X",
+            "domain": ".wetteronline.de",
+            "path": "/"
+        }])
+        
+        # 4. Seite im Kontext öffnen
+        page = await context.new_page()
         print(f"STARTE ABFRAGE: {URL}")
-
+        
         try:
-            # Wir setzen ein riesiges Fenster (3000px hoch), damit alles sofort sichtbar ist
-            await page.set_viewport_size({"width": 1280, "height": 3000})
-            
-            # Wir setzen einen "Zustimmungs-Cookie", um Banner zu umgehen
-            await context.add_cookies([{
-                "name": "euconsent-v2",
-                "value": "CP-X",
-                "domain": ".wetteronline.de",
-                "path": "/"
-            }])
-
+            # Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite im Riesen-Fenster geladen, warte auf Rendering...")
-            await asyncio.sleep(10) # Zeit zum Laden der Tabelle
+            print("Seite geladen, warte auf Rendering...")
+            await asyncio.sleep(10) 
             
             content = await page.content()
             
-            # Unser robuster Regex fuer Uhrzeit -> Zahl zwischen > <
+            # Unser robuster Regex für Uhrzeit -> Zahl zwischen > <
             pairs = re.findall(r'(\d{2}:00).*?>\s*(\-?\d+)\s*<', content, re.DOTALL)
 
             if pairs:
@@ -77,15 +85,16 @@ async def scrape():
                             print(f"Gelesen -> {h_name}: {t_val}°C")
                             seen_hours.add(h_name)
                 
+                time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Immer noch nur 1 Paar. Erstelle Screenshot zur Analyse...")
+                print("Keine Daten gefunden. Screenshot wird erstellt...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
             print(f"FEHLER: {e}")
-        
+            
         await browser.close()
 
 if __name__ == "__main__":
