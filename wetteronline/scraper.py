@@ -58,40 +58,28 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
         
         try:
-            # Seite laden
+            # Seite laden (domcontentloaded reicht für Quelltext)
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite geladen, extrahiere Daten...")
-            await asyncio.sleep(10) # Zeit zum Rendern geben
+            print("Quelltext geladen, starte Text-Analyse...")
+            await asyncio.sleep(5) 
             
-            # Wir nutzen JavaScript, um die Paare DIREKT aus den Elementen zu lesen.
-            # Wir suchen das div mit der Klasse 'temperature' innerhalb des Stunden-Blocks.
-            data = await page.evaluate("""
-                () => {
-                    const results = [];
-                    // Suche alle Stunden-Container
-                    const blocks = document.querySelectorAll('wo-forecast-hour, .forecast-hour');
-                    blocks.forEach(b => {
-                        const h = b.querySelector('wo-date-hour, .date-hour')?.innerText;
-                        const t = b.querySelector('.temperature')?.innerText;
-                        if (h && t) {
-                            // Wir bereinigen die Temperatur (nur die Zahl extrahieren)
-                            results.push({hour: h.trim(), temp: t.trim()});
-                        }
-                    });
-                    return results;
-                }
-            """)
+            content = await page.content()
+            
+            # Wir suchen Paare direkt im Text:
+            # 1. Die Uhrzeit (z.B. 23:00)
+            # 2. Alles dazwischen (dynamische IDs etc.)
+            # 3. Die Zahl nach der Klasse 'temperature'
+            # Muster: >23:00</wo-date-hour> ... class="temperature"> 5
+            pairs = re.findall(r'>(\d{2}:00)</wo-date-hour>.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
 
-            if data:
-                print(f"ERFOLG: {len(data)} saubere Wetter-Paare gefunden!")
+            if pairs:
+                print(f"ERFOLG: {len(pairs)} stündliche Paare im Text gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
                 seen_hours = set()
-                for entry in data:
-                    h_name = entry['hour']
-                    t_val = entry['temp']
+                for h_name, t_val in pairs:
                     if h_name not in seen_hours and len(seen_hours) < 24:
                         h_id = h_name.replace(":", "")
                         send_discovery(h_id, h_name)
@@ -103,8 +91,10 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Wetter-Elemente gefunden. Erstelle Screenshot...")
-                await page.screenshot(path="/usr/src/app/debug.png")
+                print("Muster im Quelltext nicht gefunden. Versuche radikale Suche...")
+                # Plan B: Einfach alle Zahlen nach 'temperature' finden
+                all_temps = re.findall(r'class="temperature"[^>]*>\s*(\-?\d+)', content)
+                print(f"Fallback ergab {len(all_temps)} nackte Temperaturen.")
 
         except Exception as e:
             print(f"FEHLER: {e}")
