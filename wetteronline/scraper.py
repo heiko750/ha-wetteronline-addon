@@ -40,22 +40,40 @@ async def scrape():
         )
         page = await browser.new_page()
         print(f"STARTE PRÄZISIONS-ABFRAGE: {URL}")
+
+
         
         try:
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
             content = await page.content()
             
-            # TRICK: Wir schneiden alles vor "Wetter aktuell" weg
-            start_marker = "Wetter aktuell"
-            if start_marker in content:
-                # Wir nehmen nur den Teil NACH dem Marker
-                parts = content.split(start_marker)
-                relevant_content = parts[1] 
-                print("Anker 'Wetter aktuell' gefunden. Filter aktiv.")
+            # Wir suchen Paare aus Uhrzeit und Temperatur
+            # Muster: >21:00</wo-date-hour> ... class="temperature"> 5
+            # Das (?:.*?) überspringt die dynamischen IDs (_ngcontent...) dazwischen
+            pairs = re.findall(r'>(\d{2}:00)</wo-date-hour>.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
+
+            if len(pairs) >= 12:
+                print(f"ERFOLG: {len(pairs)} stündliche Paare gefunden!")
+                client.username_pw_set(MQTT_USER, MQTT_PASS)
+                client.connect(MQTT_HOST, 1883, 60)
+                client.loop_start()
+                
+                for h_name, t_val in pairs[:16]:
+                    h_id = h_name.replace(":", "")
+                    
+                    # Discovery & State senden
+                    send_discovery(h_id, h_name)
+                    client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
+                    print(f"Gelesen -> {h_name}: {t_val}°C")
+                
+                time.sleep(2)
+                client.loop_stop()
+                client.disconnect()
             else:
-                relevant_content = content
-                print("Anker nicht gefunden, nutze gesamten Quelltext (Vorsicht: evtl. ungenau).")
+                print(f"Muster nicht gefunden. Treffer: {len(pairs)}")
+                # Kleiner Tipp: Falls 0 Treffer, schau mal ob im Log '21:00' ohne '>' davor steht
+
 
             # Suche nach Temperaturen im Bereich nach "Wetter aktuell"
             # Dein Fund: class="temperature"> 5
