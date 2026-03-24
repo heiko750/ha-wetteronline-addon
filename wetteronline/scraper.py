@@ -31,16 +31,27 @@ def send_discovery(h_id, h_name):
 async def scrape():
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox"])
-        # RIESIGES Fenster setzen (5000 Pixel hoch!)
+        # Kontext erstellen
         context = await browser.new_context(viewport={"width": 1280, "height": 5000})
+        
+        # DER TRICK: Wir setzen den "Zustimmungs-Status" manuell
+        await context.add_cookies([{
+            "name": "euconsent-v2",
+            "value": "CP-X-NAP-X-NAAABAAAENAAAAAAA-AAAAAAA.YAAAAAAAAAAA",
+            "domain": ".wetteronline.de",
+            "path": "/"
+        }])
+        
         page = await context.new_page()
-        print(f"STARTE ULTRA-ABFRAGE: {URL}")
+        print(f"STARTE MITTWOCHS-ABFRAGE: {URL}")
         
         try:
+            # Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            # Einmal ganz nach unten scrollen und 20 Sek warten
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            print("Seite im Riesen-Modus geladen, warte 20s auf Rendering...")
+            # Banner-Elemente per JS loeschen, falls sie doch auftauchen
+            await page.evaluate("() => { document.querySelectorAll('[id*=\"sp_message\"], iframe').forEach(el => el.remove()); }")
+            
+            print("Seite geladen, erzwinge Rendering der heutigen Daten...")
             await asyncio.sleep(20) 
             
             content = await page.content()
@@ -49,7 +60,7 @@ async def scrape():
             pairs = re.findall(r'(\d{2}:00).*?>\s*(\-?\d+)\s*<', content, re.DOTALL)
 
             if pairs:
-                print(f"ERFOLG: {len(pairs)} Paare gefunden!")
+                print(f"ERFOLG: {len(pairs)} Paare für heute gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
@@ -57,22 +68,22 @@ async def scrape():
                 seen_hours = set()
                 for h_name, t_val in pairs:
                     if h_name not in seen_hours and len(seen_hours) < 24:
-                        if -25 < int(t_val) < 45:
-                            h_id = h_name.replace(":", "")
-                            send_discovery(h_id, h_name)
-                            client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                            print(f"Gelesen -> {h_name}: {t_val}°C")
-                            seen_hours.add(h_name)
+                        h_id = h_name.replace(":", "")
+                        send_discovery(h_id, h_name)
+                        client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
+                        print(f"Gelesen -> {h_name}: {t_val}°C")
+                        seen_hours.add(h_name)
                 
                 time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Immer noch keine Stunden-Daten gefunden.")
+                print("Immer noch keine neuen Stunden-Daten. Seite im Cache?")
 
         except Exception as e:
             print(f"FEHLER: {e}")
         await browser.close()
+
 
 
 if __name__ == "__main__":
