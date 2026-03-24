@@ -59,21 +59,28 @@ async def scrape():
         
         try:
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Warte auf Daten-Injektion...")
-            
-            # Wir warten nur, bis die Elemente im HTML-Baum hängen
+            print("Warte auf Shadow-DOM Rendering...")
             await page.wait_for_selector(".temperature", state="attached", timeout=30000)
             await asyncio.sleep(5) 
             
-            # JAVASCRIPT-EXTRAKTION: Wir suchen alle Stunden (XX:00) und 
-            # alle Temperaturen im gesamten Dokument, egal wo sie stecken.
+            # Dieser JavaScript-Block findet JEDES Element, auch in Shadow-Roots
             data = await page.evaluate("""
                 () => {
-                    const hours = Array.from(document.querySelectorAll('*'))
+                    const findInShadow = (root, selector) => {
+                        let found = Array.from(root.querySelectorAll(selector));
+                        root.querySelectorAll('*').forEach(el => {
+                            if (el.shadowRoot) {
+                                found = found.concat(findInShadow(el.shadowRoot, selector));
+                            }
+                        });
+                        return found;
+                    };
+
+                    const hours = findInShadow(document, 'wo-date-hour, .date-hour')
                         .map(el => el.textContent.trim())
-                        .filter(txt => /^\\d{2}:00$/.test(txt));
+                        .filter(txt => /^\d{2}:00$/.test(txt));
                     
-                    const temps = Array.from(document.querySelectorAll('.temperature'))
+                    const temps = findInShadow(document, '.temperature')
                         .map(el => el.textContent.trim().replace(/[^0-9-]/g, ''))
                         .filter(txt => txt !== '');
                         
@@ -82,7 +89,7 @@ async def scrape():
             """)
 
             if data['hours'] and data['temps']:
-                print(f"ERFOLG: {len(data['temps'])} Temperaturen gefunden!")
+                print(f"ERFOLG: {len(data['temps'])} Temperaturen aus Shadow-DOM extrahiert!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
@@ -101,7 +108,7 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print(f"Daten unvollständig: {len(data['hours'])}h / {len(data['temps'])}t")
+                print(f"Daten immer noch verborgen: {len(data['hours'])}h / {len(data['temps'])}t")
 
         except Exception as e:
             print(f"FEHLER: {e}")
