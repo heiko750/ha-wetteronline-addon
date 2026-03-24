@@ -58,22 +58,26 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
         
         try:
-            # Seite laden (domcontentloaded reicht für Quelltext)
+            # Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Quelltext geladen, starte Text-Analyse...")
-            await asyncio.sleep(5) 
+            print("Warte explizit auf Temperatur-Elemente (Angular Rendering)...")
             
+            # WICHTIG: Wir warten, bis mindestens ein Element mit 'temperature' erscheint
+            try:
+                await page.wait_for_selector(".temperature", timeout=30000)
+                print("Elemente gefunden, extrahiere Daten...")
+            except:
+                print("Timeout: Elemente wurden nicht rechtzeitig gerendert.")
+
+            await asyncio.sleep(5) 
             content = await page.content()
             
-            # Wir suchen Paare direkt im Text:
-            # 1. Die Uhrzeit (z.B. 23:00)
-            # 2. Alles dazwischen (dynamische IDs etc.)
-            # 3. Die Zahl nach der Klasse 'temperature'
-            # Muster: >23:00</wo-date-hour> ... class="temperature"> 5
+            # DEIN PRÄZISIONS-MUSTER (Extrem flexibel für Leerzeichen)
+            # Findet: >23:00</wo-date-hour> ... class="temperature"> 6
             pairs = re.findall(r'>(\d{2}:00)</wo-date-hour>.*?class="temperature"[^>]*>\s*(\-?\d+)', content, re.DOTALL)
 
             if pairs:
-                print(f"ERFOLG: {len(pairs)} stündliche Paare im Text gefunden!")
+                print(f"ERFOLG: {len(pairs)} stündliche Paare gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
@@ -91,10 +95,9 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Muster im Quelltext nicht gefunden. Versuche radikale Suche...")
-                # Plan B: Einfach alle Zahlen nach 'temperature' finden
-                all_temps = re.findall(r'class="temperature"[^>]*>\s*(\-?\d+)', content)
-                print(f"Fallback ergab {len(all_temps)} nackte Temperaturen.")
+                print("Muster im Quelltext nicht gefunden. Erstelle Debug-Datei...")
+                with open("/usr/src/app/debug_content.txt", "w") as f:
+                    f.write(content)
 
         except Exception as e:
             print(f"FEHLER: {e}")
