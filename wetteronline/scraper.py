@@ -30,40 +30,48 @@ def send_discovery(h_id, h_name):
 
 async def scrape():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+        browser = await p.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox"])
+        # Wir setzen ein riesiges Fenster, damit die Tabelle Platz hat
         context = await browser.new_context(viewport={"width": 1280, "height": 3000})
+        
+        # Cookie setzen (Zustimmung simulieren)
+        await context.add_cookies([{"name": "euconsent-v2", "value": "CP-X", "domain": ".wetteronline.de", "path": "/"}])
+        
         page = await context.new_page()
         print(f"STARTE ABFRAGE: {URL}")
         
         try:
-            # 1. Wir setzen den Consent-Cookie (Zustimmung simulieren)
-            # Das verhindert, dass der Banner die Daten blockiert
-            await context.add_cookies([{
-                "name": "euconsent-v2",
-                "value": "CP-X",
-                "domain": ".wetteronline.de",
-                "path": "/"
-            }])
-
-            # 2. Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite mit Cookie-Bypass geladen, warte auf Rendering...")
+            # Wir geben der Seite 15 Sekunden Zeit zum Rendern
             await asyncio.sleep(15) 
             
-            # 3. Wir holen uns den Textinhalt
-            full_text = await page.evaluate("() => document.body.innerText")
-            
-            # REGEX: Suche nach Uhrzeit (XX:00) und der Zahl direkt danach
-            pairs = re.findall(r'(\d{2}:00)\s*\n*\s*(\-?\d+)', full_text)
+            # Wir extrahieren die Daten per JavaScript direkt aus dem DOM
+            data = await page.evaluate("""
+                () => {
+                    const results = [];
+                    // Suche alle Stunden-Blöcke
+                    const blocks = document.querySelectorAll('wo-forecast-hour, .forecast-hour, [class*="forecast-hour"]');
+                    blocks.forEach(b => {
+                        const h = b.innerText.match(/(\d{2}:00)/);
+                        const t = b.innerText.match(/(\-?\d+)°/);
+                        if (h && t) {
+                            results.push({hour: h[1], temp: t[1]});
+                        }
+                    });
+                    return results;
+                }
+            """)
 
-            if pairs:
-                print(f"ERFOLG: {len(pairs)} Paare im Text gefunden!")
+            if data:
+                print(f"ERFOLG: {len(data)} Paare direkt extrahiert!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
                 seen_hours = set()
-                for h_name, t_val in pairs:
+                for entry in data:
+                    h_name = entry['hour']
+                    t_val = entry['temp']
                     if h_name not in seen_hours and len(seen_hours) < 24:
                         h_id = h_name.replace(":", "")
                         send_discovery(h_id, h_name)
@@ -75,13 +83,13 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Immer noch keine Daten. Screenshot wird zur Analyse erstellt...")
+                print("Keine Daten gefunden. Erstelle Screenshot zur Analyse...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
             print(f"FEHLER: {e}")
-
         await browser.close()
+
 
 if __name__ == "__main__":
     while True:
