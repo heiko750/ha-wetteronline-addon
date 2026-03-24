@@ -58,57 +58,50 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
         
         try:
-            # Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Warte auf Wetter-Elemente im Hintergrund...")
+            print("Warte auf Daten-Injektion...")
             
-            # Wir warten nur darauf, dass die Elemente im HTML vorhanden sind (nicht zwingend sichtbar)
+            # Wir warten nur, bis die Elemente im HTML-Baum hängen
             await page.wait_for_selector(".temperature", state="attached", timeout=30000)
             await asyncio.sleep(5) 
             
-            # JAVASCRIPT-EXTRAKTION: Wir lesen JEDES Element mit 'temperature'
-            pairs = await page.evaluate("""
+            # JAVASCRIPT-EXTRAKTION: Wir suchen alle Stunden (XX:00) und 
+            # alle Temperaturen im gesamten Dokument, egal wo sie stecken.
+            data = await page.evaluate("""
                 () => {
-                    const results = [];
-                    // Suche alle Stunden-Blöcke
-                    const blocks = document.querySelectorAll('wo-forecast-hour, .forecast-hour');
-                    blocks.forEach(b => {
-                        const h = b.querySelector('wo-date-hour, .date-hour')?.textContent;
-                        const t = b.querySelector('.temperature')?.textContent;
-                        if (h && t) {
-                            results.push({
-                                hour: h.trim(), 
-                                temp: t.trim().replace(/[^0-9-]/g, '') // Nur Zahlen und Minuszeichen
-                            });
-                        }
-                    });
-                    return results;
+                    const hours = Array.from(document.querySelectorAll('*'))
+                        .map(el => el.textContent.trim())
+                        .filter(txt => /^\\d{2}:00$/.test(txt));
+                    
+                    const temps = Array.from(document.querySelectorAll('.temperature'))
+                        .map(el => el.textContent.trim().replace(/[^0-9-]/g, ''))
+                        .filter(txt => txt !== '');
+                        
+                    return { hours, temps };
                 }
             """)
 
-            if pairs:
-                print(f"ERFOLG: {len(pairs)} Paare extrahiert!")
+            if data['hours'] and data['temps']:
+                print(f"ERFOLG: {len(data['temps'])} Temperaturen gefunden!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
-                seen_hours = set()
-                for entry in pairs:
-                    h_name = entry['hour']
-                    t_val = entry['temp']
-                    # Validierung: Stunde muss XX:00 Format haben und Temp eine Zahl sein
-                    if ":" in h_name and t_val and h_name not in seen_hours:
-                        h_id = h_name.replace(":", "")
-                        send_discovery(h_id, h_name)
-                        client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
-                        print(f"Gelesen -> {h_name}: {t_val}°C")
-                        seen_hours.add(h_name)
+                # Wir nehmen die ersten 16 Paare
+                for i in range(min(len(data['hours']), len(data['temps']), 16)):
+                    h_name = data['hours'][i]
+                    t_val = data['temps'][i]
+                    h_id = h_name.replace(":", "")
+                    
+                    send_discovery(h_id, h_name)
+                    client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
+                    print(f"Gelesen -> {h_name}: {t_val}°C")
                 
                 time.sleep(2)
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Daten in den gefundenen Elementen.")
+                print(f"Daten unvollständig: {len(data['hours'])}h / {len(data['temps'])}t")
 
         except Exception as e:
             print(f"FEHLER: {e}")
