@@ -70,22 +70,27 @@ async def scrape():
                         return found;
                     };
 
-                    // Wir suchen den Bereich, der die STÜNDLICHE Vorhersage enthält
-                    // Alles vor dem Wort "Stündlich" im Textinhalt wird ignoriert
-                    const bodyText = document.body.innerText;
-                    const hourlyIndex = bodyText.indexOf("Stündlich");
+                    const results = [];
+                    // Wir suchen die Stunden-Container
+                    const blocks = findInShadow(document, 'wo-forecast-hour, .forecast-hour');
                     
-                    const temps = findInShadow(document, '.temperature')
-                        .filter(el => {
-                            // Nur Temperaturen nehmen, die NACH dem Wort "Stündlich" im DOM kommen
-                            return el.compareDocumentPosition(document.body) & Node.DOCUMENT_POSITION_PRECEDING;
-                        })
-                        .map(el => el.textContent.trim().replace(/[^0-9-]/g, ''))
-                        .filter(txt => txt !== '');
+                    blocks.forEach(b => {
+                        const h_el = b.querySelector('wo-date-hour, .date-hour');
+                        // WICHTIG: Wir suchen EXAKT das div, das NUR 'temperature' als Klasse hat
+                        // um die 'felt-temperature' (gefuehlt) auszuschliessen.
+                        const t_el = b.querySelector('.temperature:not(.felt-temperature)');
                         
-                    return { temps };
+                        const h = h_el?.textContent?.trim();
+                        const t = t_el?.textContent?.trim().replace(/[^0-9-]/g, '');
+                        
+                        if (h && h.includes(':00') && t) {
+                            results.push({hour: h, temp: t});
+                        }
+                    });
+                    return results;
                 }
             """)
+
 
             if data['temps']:
                 # FALLBACK: Falls der DOM-Filter zu komplex ist, nehmen wir die Liste 
