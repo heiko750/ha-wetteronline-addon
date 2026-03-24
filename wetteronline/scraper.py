@@ -36,16 +36,24 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
         
         try:
+            # 1. Wir setzen den Consent-Cookie (Zustimmung simulieren)
+            # Das verhindert, dass der Banner die Daten blockiert
+            await context.add_cookies([{
+                "name": "euconsent-v2",
+                "value": "CP-X",
+                "domain": ".wetteronline.de",
+                "path": "/"
+            }])
+
+            # 2. Seite laden
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite geladen, starte Text-Analyse...")
-            # Wir geben der Seite Zeit, alle Scripte auszufuehren
+            print("Seite mit Cookie-Bypass geladen, warte auf Rendering...")
             await asyncio.sleep(15) 
             
-            # Wir holen uns den reinen Textinhalt der gesamten Seite
+            # 3. Wir holen uns den Textinhalt
             full_text = await page.evaluate("() => document.body.innerText")
             
             # REGEX: Suche nach Uhrzeit (XX:00) und der Zahl direkt danach
-            # Wir suchen: 22:00 (irgendwelche Zeichen/Leerzeilen) Zahl
             pairs = re.findall(r'(\d{2}:00)\s*\n*\s*(\-?\d+)', full_text)
 
             if pairs:
@@ -67,7 +75,7 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Auch im Text nichts gefunden. Erstelle Screenshot...")
+                print("Immer noch keine Daten. Screenshot wird zur Analyse erstellt...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
