@@ -88,20 +88,21 @@ async def scrape():
                 }
             """)
 
-            if data['hours'] and data['temps']:
-                print(f"ERFOLG: {data['temps']|length} Temperaturen im Speicher!")
+            if data['temps']:
+                print(f"ERFOLG: {len(data['temps'])} Temperaturen im Speicher!")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
                 
-                # Wir erzwingen die Verarbeitung der nächsten 24 Paare
-                # Auch wenn eine Liste mal ein Element mehr hat
-                max_range = min(len(data['hours']), len(data['temps']), 24)
+                # Wir nehmen die aktuelle Stunde als Startpunkt
+                start_hour = datetime.now().hour
                 
-                for i in range(max_range):
-                    h_name = data['hours'][i]
+                # Wir verarbeiten die nächsten 24 Stunden, egal ob 'hours' gefunden wurde
+                for i in range(min(len(data['temps']), 24)):
+                    current_h = (start_hour + i) % 24
+                    h_name = f"{current_h:02d}:00"
+                    h_id = f"{current_h:02d}00"
                     t_val = data['temps'][i]
-                    h_id = h_name.replace(":", "")
                     
                     send_discovery(h_id, h_name)
                     client.publish(f"wetteronline/hourly/{h_id}/temp", t_val, retain=True)
