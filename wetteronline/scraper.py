@@ -70,7 +70,7 @@ async def scrape():
             # Debug: Mach einen Screenshot, um zu sehen, was der Browser sieht
             await page.screenshot(path="/config/wetter_debug.png")
 
-        hours = page.locator("wo-forecast-hour")
+        hours = page.locator(".forecast-hour, wo-forecast-hour")
         count = await hours.count()
 
         for i in range(count):
@@ -99,4 +99,7 @@ async def scrape():
         print("Scrape-Vorgang abgeschlossen.") # Abschlussmeldung
 
 if __name__ == "__main__":
-    asyncio.run(scrape())
+    while True:
+        asyncio.run(scrape())
+        print(f"Warte {INTERVAL} Minuten bis zum nächsten Scan...")
+        time.sleep(INTERVAL * 60)
