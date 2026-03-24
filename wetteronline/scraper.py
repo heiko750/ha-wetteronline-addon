@@ -40,12 +40,20 @@ async def scrape():
         print(f"STARTE ABFRAGE: {URL}")
 
         try:
-            await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            print("Seite geladen, simuliere Scrollen...")
+            # Wir setzen ein riesiges Fenster (3000px hoch), damit alles sofort sichtbar ist
+            await page.set_viewport_size({"width": 1280, "height": 3000})
             
-            # Wir scrollen 2000 Pixel nach unten, um das Nachladen zu triggern
-            await page.mouse.wheel(0, 2000)
-            await asyncio.sleep(8) # Zeit zum Rendern geben
+            # Wir setzen einen "Zustimmungs-Cookie", um Banner zu umgehen
+            await context.add_cookies([{
+                "name": "euconsent-v2",
+                "value": "CP-X",
+                "domain": ".wetteronline.de",
+                "path": "/"
+            }])
+
+            await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            print("Seite im Riesen-Fenster geladen, warte auf Rendering...")
+            await asyncio.sleep(10) # Zeit zum Laden der Tabelle
             
             content = await page.content()
             
@@ -72,7 +80,7 @@ async def scrape():
                 client.loop_stop()
                 client.disconnect()
             else:
-                print("Keine Daten gefunden. Mache Screenshot...")
+                print("Immer noch nur 1 Paar. Erstelle Screenshot zur Analyse...")
                 await page.screenshot(path="/usr/src/app/debug.png")
 
         except Exception as e:
