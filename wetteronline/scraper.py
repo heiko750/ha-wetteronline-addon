@@ -78,15 +78,17 @@ async def scrape():
                 client.loop_start()
                 for entry in data[:24]:
                     h_id = entry['hour'].replace(":", "")
-                    # Sende alle 3 Sensortypen pro Stunde
+                    # Sende Discovery: Wind jetzt OHNE Einheit (da Text)
                     send_discovery(h_id, entry['hour'], "temp", "°C", "mdi:thermometer")
                     send_discovery(h_id, entry['hour'], "condition", None, "mdi:weather-partly-cloudy")
-                    send_discovery(h_id, entry['hour'], "wind", "km/h", "mdi:weather-windy")
+                    send_discovery(h_id, entry['hour'], "wind", None, "mdi:weather-windy") # Einheit weg
                     
                     client.publish(f"wetteronline/hourly/{h_id}/temp", entry['temp'], retain=True)
                     client.publish(f"wetteronline/hourly/{h_id}/condition", entry['condition'], retain=True)
                     client.publish(f"wetteronline/hourly/{h_id}/wind", entry['wind'], retain=True)
-                    print(f"MQTT -> {entry['hour']}: {entry['temp']}°C, {entry['condition']}, {entry['wind']}km/h")
+                    # Sauberer Print im Log
+                    print(f"MQTT -> {entry['hour']}: {entry['temp']}°C, {entry['condition']}, Status: {entry['wind']}")
+
                 time.sleep(2)
                 client.loop_stop(); client.disconnect()
         except Exception as e: print(f"FEHLER: {e}")
