@@ -1,6 +1,6 @@
 {
   "name": "WetterOnline Scraper",
-  "version": "1.19.2",
+  "version": "1.19.3",
   "slug": "wetteronline",
   "description": "Scrapes weather for PV heating control.",
   "startup": "services",
