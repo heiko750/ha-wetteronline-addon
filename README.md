@@ -12,7 +12,7 @@ The scraper uses Playwright to penetrate the Shadow-DOM layers and dynamic Angul
 
 **Installation:** via Add-on store by adding the link to github repository (3 dots upper right corner)
 
-If you install this Add-on and notice problems:
+If you notice problems after installation of Add-on:
 - **1:** check, whether you added in the config of the Add-on your MQTT user name and password as well as location 
 - **2:** for debugging see following lines
 ### Debugging & Manual Test
