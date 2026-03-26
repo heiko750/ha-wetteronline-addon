@@ -1,5 +1,5 @@
 # WetterOnline Add-on Repository
-
+![WetterOnline Dashboard](dashboadd_apexchart_wetteronline.png)
 This Repository contains the Home Assistant Add-on "WetterOnline Scraper".
 Motivation for the Add-on: I checked severeal avaialble weather services like DWD or AccuWeather over months, none of them provide a so precise forecast like wetteronline for my home town.
 The Add-on, optimized for ODROID-N2+ / HA Blue, scrapes from wetteronline the temperature, weather condition as well as wind for the next 24 hours and makes them available as entities via MQTT. Check the Wiki/Examples for the **ApexCharts-Card** YAML configuration to visualize the 24h temperature fever curve and wind staircases.
