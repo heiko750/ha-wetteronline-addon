@@ -7,7 +7,7 @@ This Repository contains the Home Assistant Add-on "WetterOnline Scraper".
 
 **Motivation for the Add-on:** I checked severeal avaialble weather services like DWD or AccuWeather over months, none of them provide a so precise forecast like wetteronline for my home town.
 
-**Scope:** The Add-on, optimized for ODROID-N2+ / HA Blue, scrapes from wetteronline the temperature, weather condition as well as wind for the next 24 hours and makes them available as entities via MQTT. Check the Wiki/Examples for the **ApexCharts-Card** YAML configuration to visualize a forecast for the 24h temperature fever curve and wind as well as sun staircases, on top wind levels which could be beneficial for balcony power plant.
+**Scope:** The Add-on, optimized for ODROID-N2+ / HA Blue, scrapes from wetteronline the temperature, weather condition as well as wind for the next 24 hours and makes them available as entities via MQTT. Check the Wiki/Examples for the **ApexCharts-Card** YAML configuration to visualize a forecast for the 24h temperature fever curve and wind- as well as sun staircases. The wind levels of the chart could be used e.g. to protect your balcony power plant.
 
 The scraper uses Playwright to penetrate the Shadow-DOM layers and dynamic Angular components of WetterOnline, which are typically invisible to standard scrapers.
 
