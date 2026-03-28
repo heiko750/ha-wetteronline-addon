@@ -5,10 +5,10 @@
               chart:
                 height: 240px
                 toolbar:
-                  show: false # Falls du die Menü-Punkte oben rechts nicht brauchst
+                  show: false # falls du die Menü-Punkte oben rechts nicht brauchst
                 grid:
                   padding:
-                    top: -20 # Schiebt das Diagramm näher an den Titel/Header
+                    top: -20 # schiebt das Diagramm näher an den Titel/Header
               grid:
                 padding:
                   top: -15 # Zweiter Anker für das Padding
@@ -17,7 +17,7 @@
                 show: true
                 title:
                   text: °C
-                decimalsInFloat: 1 # Erzwingt 4.0 statt 4.000000
+                decimalsInFloat: 1 # erzwingt 4.0 statt 4.000000
                 # decimals: 1
                 unit: °C
                 apex_config:
@@ -29,7 +29,7 @@
                 opposite: true # PV-Skala auf der rechten Seite
                 unit: kW
                 # decimals: 0
-                decimalsInFloat: 2 # Erzwingt 3.50 statt 3.500000
+                decimalsInFloat: 2 # erzwingt 3.50 statt 3.500000
                 apex_config:
                   tickAmount: 5
               # NEU: Die unsichtbare Wind-Achse
@@ -41,7 +41,7 @@
               - id: sun_axis
                 show: false
                 min: 0
-                max: 100 # Wir mappen Sonne auf 0 bis 100%
+                max: 100 # mappen der Sonne auf 0 bis 100%
               annotations:
                 yaxis:
                   - y: 1.5
@@ -54,9 +54,9 @@
                       style:
                         background: "#2196f3"
                         color: "#fff"
-            graph_span: 24h # Zeigt die nächsten 24 Stunden
+            graph_span: 24h # zeigt die nächsten 24 Stunden
             span:
-              start: hour # Beginnt zur aktuellen Stunde
+              start: hour # beginnt zur aktuellen Stunde
               offset: -3h # DIES ZEIGT DIE LETZTEN 3 STUNDEN AUCH AN
             header:
               show: true
@@ -68,19 +68,19 @@
               color: red
               label: Now
             series:
-              # 1a Dieser Sensor liefert NUR den Wert für den Header (13:00 Uhr = 7°C)
+              # 1a dieser Sensor liefert NUR den Wert für den Header (13:00 Uhr = 7°C)
               - entity: sensor.wo_13_00_temp
                 name: "Temperatur"
                 show:
                   in_header: true
                   legend_value: true
                   in_chart: false # Verhindert eine doppelte Linie
-              # 1b Dieser Sensor zeichnet NUR die Kurve (ab jetzt bis Mitternacht)
+              # 1b dieser Sensor zeichnet NUR die Kurve (ab jetzt bis Mitternacht)
               - entity: sensor.your_location_temperatur_vorhersage_24h
                 yaxis_id: temp_axis
                 name: "Vorhersage"
                 show:
-                  in_header: false # Versteckt den 1°C-Endwert im Header
+                  in_header: false # versteckt den 1°C-Endwert im Header
                   legend_value: false
                   datalabels: true
                 type: line
@@ -88,19 +88,18 @@
                 stroke_width: 3
                 data_generator: |
                   const now = new Date();
-                  // Wir setzen den Startpunkt auf 3 Stunden vor "jetzt"
+                  // Wir setzen den Startpunkt auf 3 Stunden vor "jetzt."
                   const lookback = new Date(now.getTime() - (3 * 60 * 60 * 1000));
                   lookback.setMinutes(0, 0, 0); 
-                  
                   return entity.attributes.forecast
                     .filter(entry => new Date(entry.time) >= lookback) 
                     .map((entry) => {
                       return [new Date(entry.time).getTime(), entry.value];
                     });
-              # 2. Deine Sungrow PV-Leistung (Live-Balken oder Fläche)
-              - entity: sensor.panos_total_solar_dc_power
+              # 2. Deine Wechselrichter PV-Leistung (Live-Balken oder Fläche)
+              - entity: sensor.total_solar_dc_power
                 name: PV Power
-                # DIESER BEFEHL RECHNET DEN WERT UM:
+                # DIESER BEFEHL RECHNET DEN WERT von Watt in kW um:
                 transform: "return x / 1000;"
                 show:
                   in_header: true
@@ -110,7 +109,7 @@
                 # ODER (falls die Fläche trotzdem weitergeht):
                 fill_raw: "null"
                 unit: " kW" # Überschreibt das Watt-Symbol im Header/Legende
-                float_precision: 2 # Sorgt für max. 2 Nachkommastellen im Header
+                float_precision: 2 # sorgt für max. 2 Nachkommastellen im Header
                 yaxis_id: pv_axis
                 type: area
                 color: '#4caf50'
@@ -155,8 +154,7 @@
                     const d = new Date(entry.time);
                     const h = d.getHours();
                     const v = entry.value.toLowerCase();
-                    
-                    // Tag-Fenster für your_location (7 bis 19 Uhr)
+                    // Tag-Fenster for your_location (7 bis 19 Uhr)
                     if (h >= 7 && h < 19) {
                       if (v.includes('sonnig') || v.includes('heiter')) s = 100;
                       else if (v.includes('wechselnd')) s = 70;
