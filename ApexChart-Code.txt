@@ -1,0 +1,167 @@
+          - type: custom:apexcharts-card
+            apex_config:
+              legend:
+                show: true
+              chart:
+                height: 240px
+                toolbar:
+                  show: false # Falls du die Menü-Punkte oben rechts nicht brauchst
+                grid:
+                  padding:
+                    top: -20 # Schiebt das Diagramm näher an den Titel/Header
+              grid:
+                padding:
+                  top: -15 # Zweiter Anker für das Padding
+              yaxis:
+              - id: temp_axis # Achtung, Reihenfolge der yaxis-Liste muss mit der Zuweisung in den series übereinstimmen, sonst landet das Signal auf der falschen Skala.
+                show: true
+                title:
+                  text: °C
+                decimalsInFloat: 1 # Erzwingt 4.0 statt 4.000000
+                # decimals: 1
+                unit: °C
+                apex_config:
+                  tickAmount: 5
+              - id: pv_axis
+                show: true
+                title:
+                  text: kW
+                opposite: true # PV-Skala auf der rechten Seite
+                unit: kW
+                # decimals: 0
+                decimalsInFloat: 2 # Erzwingt 3.50 statt 3.500000
+                apex_config:
+                  tickAmount: 5
+              # NEU: Die unsichtbare Wind-Achse
+              - id: wind_axis # NEU: Feste Achse für Wind-Status
+                show: false
+                min: 0
+                max: 4000 # Fixer Wert, damit die Höhe immer gleich bleibt
+              # NEU: Die unsichtbare Sonnen-Achse
+              - id: sun_axis
+                show: false
+                min: 0
+                max: 100 # Wir mappen Sonne auf 0 bis 100%
+              annotations:
+                yaxis:
+                  - y: 1.5
+                    id: temp_axis # Wichtig: Hier die ID deiner Temperatur-Achse angeben!
+                    strokeDashArray: 4
+                    borderColor: "#2196f3"
+                    borderWidth: 2
+                    label:
+                      text: "Frostgrenze"
+                      style:
+                        background: "#2196f3"
+                        color: "#fff"
+            graph_span: 24h # Zeigt die nächsten 24 Stunden
+            span:
+              start: hour # Beginnt zur aktuellen Stunde
+              offset: -3h # DIES ZEIGT DIE LETZTEN 3 STUNDEN AUCH AN
+            header:
+              show: true
+              title: "Forecast: PV-Ertrag vs. Außentemperatur"
+              show_states: true
+              colorize_states: true
+            now:
+              show: true
+              color: red
+              label: Now
+            series:
+              # 1a Dieser Sensor liefert NUR den Wert für den Header (13:00 Uhr = 7°C)
+              - entity: sensor.wo_13_00_temp
+                name: "Temperatur"
+                show:
+                  in_header: true
+                  legend_value: true
+                  in_chart: false # Verhindert eine doppelte Linie
+              # 1b Dieser Sensor zeichnet NUR die Kurve (ab jetzt bis Mitternacht)
+              - entity: sensor.your_location_temperatur_vorhersage_24h
+                yaxis_id: temp_axis
+                name: "Vorhersage"
+                show:
+                  in_header: false # Versteckt den 1°C-Endwert im Header
+                  legend_value: false
+                  datalabels: true
+                type: line
+                color: '#ff9800'
+                stroke_width: 3
+                data_generator: |
+                  const now = new Date();
+                  // Wir setzen den Startpunkt auf 3 Stunden vor "jetzt"
+                  const lookback = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+                  lookback.setMinutes(0, 0, 0); 
+                  
+                  return entity.attributes.forecast
+                    .filter(entry => new Date(entry.time) >= lookback) 
+                    .map((entry) => {
+                      return [new Date(entry.time).getTime(), entry.value];
+                    });
+              # 2. Deine Sungrow PV-Leistung (Live-Balken oder Fläche)
+              - entity: sensor.panos_total_solar_dc_power
+                name: PV Power
+                # DIESER BEFEHL RECHNET DEN WERT UM:
+                transform: "return x / 1000;"
+                show:
+                  in_header: true
+                  legend_value: false
+                # DIESE ZEILE STOPPT DIE LINIE BEI "JETZT":
+                extend_to: false 
+                # ODER (falls die Fläche trotzdem weitergeht):
+                fill_raw: "null"
+                unit: " kW" # Überschreibt das Watt-Symbol im Header/Legende
+                float_precision: 2 # Sorgt für max. 2 Nachkommastellen im Header
+                yaxis_id: pv_axis
+                type: area
+                color: '#4caf50'
+                opacity: 0.3
+                stroke_width: 0.2
+              # 3. WIND-CHECK (Hintergrund-Fläche)
+              - entity: sensor.your_location_wind_vorhersage_24h
+                name: "Wind-Gefahr"
+                unit: "%"
+                yaxis_id: wind_axis
+                show:
+                  in_header: true
+                  legend_value: false
+                type: area
+                color: "#2196f3"
+                opacity: 0.3 # Erhöhe die Deckkraft kurz zum Testen
+                stroke_width: 0.2 # Setze die Linie auf 2, um zu sehen, ob überhaupt etwas gezeichnet wird
+                curve: stepline
+                data_generator: |
+                  return entity.attributes.forecast.map((entry) => {
+                    let v = 0;
+                    if (entry.value === 'Sturm') v = 2500;
+                    if (entry.value === 'Windig') v = 1200;
+                    // Wir geben den Zeitstempel explizit als Zahl (Millisekunden) zurück
+                    return [new Date(entry.time).getTime(), v];
+                  });
+              # 3. Sonne im ApexChart (Live-Fläche)
+              - entity: sensor.your_location_wetter_vorhersage_24h
+                yaxis_id: sun_axis
+                name: "Sonnenschein"
+                type: area
+                color: "#ffeb3b"
+                opacity: 0.3
+                stroke_width: 0
+                curve: stepline
+                show:
+                  in_header: false # Die störende "0" bleibt weg
+                  legend_value: false
+                data_generator: |
+                  return entity.attributes.forecast.map((entry) => {
+                    let s = 0;
+                    const d = new Date(entry.time);
+                    const h = d.getHours();
+                    const v = entry.value.toLowerCase();
+                    
+                    // Tag-Fenster für your_location (7 bis 19 Uhr)
+                    if (h >= 7 && h < 19) {
+                      if (v.includes('sonnig') || v.includes('heiter')) s = 100;
+                      else if (v.includes('wechselnd')) s = 70;
+                      else if (v.includes('stark bew')) s = 15;
+                      else if (v.includes('bew')) s = 30;
+                    }
+                    return [d.getTime(), s];
+                  });
