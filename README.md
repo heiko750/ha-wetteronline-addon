@@ -1,9 +1,7 @@
 # WetterOnline Add-on Repository
 
 This Repository contains the Home Assistant Add-on "WetterOnline Scraper".
-<p align="center">
-  <img src="dashboard_apexchart1_wetteronline.png" width="600" title="WetterOnline Scraper Dashboard">
-</p>
+
 
 **Motivation for the Add-on:** I checked severeal avaialble weather services like DWD or AccuWeather over months, none of them provide a so precise forecast like wetteronline for my home town.
 
