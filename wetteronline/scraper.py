@@ -8,7 +8,7 @@ MQTT_HOST = "core-mosquitto"
 MQTT_USER = os.getenv("MQTT_USER", "mqtt-user")
 MQTT_PASS = os.getenv("MQTT_PASSWORD")
 LOCATION = os.getenv("LOCATION", "grafing")
-URL = f"https://www.wetteronline.de/wetter/{LOCATION.strip('/')}"
+URL = f"https://wetteronline.de{LOCATION.strip('/')}"
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
@@ -18,10 +18,10 @@ def send_discovery(h_id, h_name, sensor_type, unit, icon):
         "name": f"WO {h_name} {sensor_type.capitalize()}",
         "state_topic": f"wetteronline/hourly/{h_id}/{sensor_type}",
         "unique_id": f"wo_{sensor_type}_{h_id}",
-        "icon": icon
+        "icon": icon,
+        "device_class": "temperature" if sensor_type == "temp" else None,
+        "unit_of_measurement": unit if unit else None
     }
-    if unit: payload["unit_of_measurement"] = unit
-    if sensor_type == "temp": payload["device_class"] = "temperature"
     client.publish(topic, json.dumps(payload), retain=True)
 
 async def scrape():
@@ -29,93 +29,61 @@ async def scrape():
         browser = await p.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox", "--disable-gpu"])
         context = await browser.new_context(viewport={"width": 1280, "height": 3000})
         page = await context.new_page()
-        print(f"STARTE DEEP-SCAN (TEMP/WIND/WETTER): {URL}")
+        
+        print(f"STARTE SCAN: {URL}")
         try:
+            # 1. Seite laden (domcontentloaded ist schneller und stabiler bei Werbung)
             await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            
-            # Warte kurz, bis der Pfeil wirklich im HTML erscheint (max. 10 Sek)
-            await page.wait_for_selector(".hourly-forecast-container .arrow-right", timeout=10000)
+            await asyncio.sleep(5) # Warten auf Scripte
 
-            arrow = page.locator(arrow_selector)
-
-            # --- NEU: KLICK-SIMULATION FÜR DAS STUNDEN-KARUSSELL ---
-            # Wir suchen den rechten Pfeil im Stunden-Container
-
-        try:
-            # Wir warten nur bis das Grundgerüst steht
-            await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            
-            # 1. Kurze Pause, damit Scripte laden können
-            await asyncio.sleep(5) 
-
-            # 2. Cookie-Banner "akzeptieren" (falls vorhanden)
-            # Wir suchen nach typischen "Zustimmen"-Buttons
-            cookie_button = page.locator("button:has-text('Akzeptieren'), button:has-text('Zustimmen'), .cmp-button_accept")
-            if await cookie_button.count() > 0:
-                print("Cookie-Banner gefunden, klicke 'Zustimmen'...")
-                await cookie_button.first.click()
-                await asyncio.sleep(2)
-
-            # 3. Den Pfeil-Button suchen (wir probieren mehrere Varianten)
-            # WetterOnline nutzt oft 'wo-forecast-hour-container' oder ähnliches
-            arrow_selectors = [
-                ".hourly-forecast-container .arrow-right",
-                ".forecast-hourly .arrow-right",
-                ".hourly-container .arrow-right",
-                ".arrow-right"
-            ]
-            
-            arrow = None
-            for selector in arrow_selectors:
-                if await page.locator(selector).count() > 0:
-                    arrow = page.locator(selector)
-                    print(f"Pfeil-Button mit Selektor '{selector}' gefunden.")
+            # 2. COOKIE-BANNER WEGKLICKEN (WICHTIG!)
+            # Wir suchen nach dem typischen "Zustimmen" oder "Akzeptieren" Button
+            cookie_selectors = ["button:has-text('Akzeptieren')", "button:has-text('Zustimmen')", ".cmp-button_accept"]
+            for sel in cookie_selectors:
+                btn = page.locator(sel)
+                if await btn.count() > 0:
+                    print("Cookie-Banner erkannt. Klicke 'Akzeptieren'...")
+                    await btn.first.click()
+                    await asyncio.sleep(2)
                     break
 
-            if arrow:
-                # 17 Klicks für die vollen 24h
+            # 3. PFEIL-BUTTON FINDEN UND 17x KLICKEN
+            # Wir nutzen einen flexiblen Selektor fuer den rechten Pfeil
+            arrow = page.locator(".hourly-forecast-container .arrow-right, .forecast-hourly .arrow-right, .arrow-right").first
+            
+            if await arrow.count() > 0:
+                print("Stunden-Pfeil gefunden. Starte 17 Klicks für 24h-Daten...")
                 for k in range(17):
                     if await arrow.is_visible():
                         await arrow.click()
-                        await asyncio.sleep(0.6) # Etwas langsamer klicken für Stabilität
-                print("Klicks erfolgreich ausgeführt.")
+                        await asyncio.sleep(0.6) # Animation abwarten
+                print("Klicks beendet.")
             else:
-                print("FEHLER: Kein Pfeil-Button gefunden. Erstelle Screenshot zur Analyse.")
-                await page.screenshot(path="/usr/src/app/debug_no_arrow.png")
+                print("HINWEIS: Kein Pfeil gefunden. Scrape nur sichtbare Daten.")
 
-
-            # DEEP-SCROLL (behalten wir bei, falls noch andere Seitenteile laden müssen)
-            for i in range(2):
-                await page.mouse.wheel(0, 800)
-                await asyncio.sleep(2) 
-            
+            # 4. DATEN AUSLESEN PER EVALUATE
             data = await page.evaluate("""
                 () => {
-                    const findInShadow = (root, selector) => {
-                        let found = Array.from(root.querySelectorAll(selector));
-                        root.querySelectorAll('*').forEach(el => {
-                            if (el.shadowRoot) found = found.concat(findInShadow(el.shadowRoot, selector));
-                        });
-                        return found;
-                    };
                     const results = [];
-                    // Wir erfassen alle Stunden-Blöcke, die nun im DOM vorhanden sind
-                    const blocks = findInShadow(document, 'wo-forecast-hour, .forecast-hour');
+                    // Suche alle Stunden-Blöcke (auch die neu reingeschobenen)
+                    const blocks = Array.from(document.querySelectorAll('wo-forecast-hour, .forecast-hour, .hourly-forecast-item'));
+                    
                     blocks.forEach(b => {
                         const h = b.querySelector('wo-date-hour, .date-hour')?.textContent?.trim();
                         const t = b.querySelector('.temperature:not(.felt-temperature)')?.textContent?.trim().replace(/[^0-9-]/g, '');
-                        const c = b.querySelector('img.symbol')?.getAttribute('alt')?.trim();
+                        const c = b.querySelector('img.symbol')?.getAttribute('alt')?.trim() || "Unbekannt";
                         
+                        // Wind-Check
                         const images = Array.from(b.querySelectorAll('img'));
                         let w = "Ruhig";
                         images.forEach(img => {
                             const src = img.getAttribute('src') || "";
-                            if (src.includes('ic_heavy_wind')) { w = "Sturm"; }
-                            else if (src.includes('ic_wind') && w !== "Sturm") { w = "Windig"; }
+                            if (src.includes('ic_heavy_wind')) w = "Sturm";
+                            else if (src.includes('ic_wind') && w !== "Sturm") w = "Windig";
                         });
 
                         if (h && h.includes(':00')) {
-                            // Dubletten-Check: Nur hinzufügen, wenn diese Stunde noch nicht in der Liste ist
+                            // Dubletten verhindern
                             if (!results.find(item => item.hour === h)) {
                                 results.push({hour: h, temp: t, condition: c, wind: w});
                             }
@@ -126,14 +94,12 @@ async def scrape():
             """)
 
             if data:
-                print(f"ERFOLG: {len(data)} Stunden-Daten im Speicher.")
+                print(f"ERFOLG: {len(data)} Stunden gefunden.")
                 client.username_pw_set(MQTT_USER, MQTT_PASS)
                 client.connect(MQTT_HOST, 1883, 60)
                 client.loop_start()
-                
-                # Wir sortieren nach Zeit, falls das Karussell die Reihenfolge im DOM gewürfelt hat
-                # (Optional, aber sauberer)
-                
+
+                # Sende bis zu 24 Stunden
                 for entry in data[:24]:
                     h_id = entry['hour'].replace(":", "")
                     send_discovery(h_id, entry['hour'], "temp", "°C", "mdi:thermometer")
@@ -143,22 +109,23 @@ async def scrape():
                     client.publish(f"wetteronline/hourly/{h_id}/temp", entry['temp'], retain=True)
                     client.publish(f"wetteronline/hourly/{h_id}/condition", entry['condition'], retain=True)
                     client.publish(f"wetteronline/hourly/{h_id}/wind", entry['wind'], retain=True)
-                    print(f"MQTT -> {entry['hour']}: {entry['temp']}°C, {entry['condition']}, {entry['wind']}")
                 
+                print(f"Daten für {min(len(data), 24)} Stunden an MQTT gesendet.")
                 time.sleep(2)
                 client.loop_stop(); client.disconnect()
             else:
-                print("Keine Daten gefunden.")
-                await page.screenshot(path="/usr/src/app/debug.png")
-                
-        except Exception as e: 
-            print(f"FEHLER: {e}")
-            await page.screenshot(path="/usr/src/app/debug.png")
+                print("FEHLER: Keine Daten extrahiert.")
+                await page.screenshot(path="/usr/src/app/debug_error.png")
+
+        except Exception as e:
+            print(f"KRITISCHER FEHLER: {e}")
+            try: await page.screenshot(path="/usr/src/app/debug_crash.png")
+            except: pass
             
         await browser.close()
 
 if __name__ == "__main__":
     while True:
         asyncio.run(scrape())
-        print("Warte 30 Min...")
+        print("Warte 30 Min bis zum nächsten Scan...")
         time.sleep(1800)
