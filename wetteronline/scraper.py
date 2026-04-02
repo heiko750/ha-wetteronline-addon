@@ -88,6 +88,8 @@ async def scrape():
                     print(f"MQTT -> {entry['hour']}: {entry['temp']}°C, {entry['condition']}, {entry['wind']}")
                 time.sleep(2)
                 client.loop_stop(); client.disconnect()
+                await page.screenshot(path="/usr/src/app/debug.png")
+                print("Screenshot erstellt for debugging")
             else:
                 # Debug: Screenshot wenn nichts gefunden wird
                 await page.screenshot(path="/usr/src/app/debug.png")
