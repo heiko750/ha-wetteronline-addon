@@ -40,20 +40,49 @@ async def scrape():
 
             # --- NEU: KLICK-SIMULATION FÜR DAS STUNDEN-KARUSSELL ---
             # Wir suchen den rechten Pfeil im Stunden-Container
-            arrow_selector = ".hourly-forecast-container .arrow-right, .forecast-hourly .arrow-right"
-            arrow = page.locator(arrow_selector)
+
+        try:
+            # Wir warten nur bis das Grundgerüst steht
+            await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             
-            if await arrow.count() > 0:
-                print("Stunden-Karussell gefunden. Starte Klicks für 24h-Ansicht...")
-                # 17 Klicks, um von 7 auf 24 Stunden zu kommen (1 Klick = 1 neue Stunde)
+            # 1. Kurze Pause, damit Scripte laden können
+            await asyncio.sleep(5) 
+
+            # 2. Cookie-Banner "akzeptieren" (falls vorhanden)
+            # Wir suchen nach typischen "Zustimmen"-Buttons
+            cookie_button = page.locator("button:has-text('Akzeptieren'), button:has-text('Zustimmen'), .cmp-button_accept")
+            if await cookie_button.count() > 0:
+                print("Cookie-Banner gefunden, klicke 'Zustimmen'...")
+                await cookie_button.first.click()
+                await asyncio.sleep(2)
+
+            # 3. Den Pfeil-Button suchen (wir probieren mehrere Varianten)
+            # WetterOnline nutzt oft 'wo-forecast-hour-container' oder ähnliches
+            arrow_selectors = [
+                ".hourly-forecast-container .arrow-right",
+                ".forecast-hourly .arrow-right",
+                ".hourly-container .arrow-right",
+                ".arrow-right"
+            ]
+            
+            arrow = None
+            for selector in arrow_selectors:
+                if await page.locator(selector).count() > 0:
+                    arrow = page.locator(selector)
+                    print(f"Pfeil-Button mit Selektor '{selector}' gefunden.")
+                    break
+
+            if arrow:
+                # 17 Klicks für die vollen 24h
                 for k in range(17):
                     if await arrow.is_visible():
                         await arrow.click()
-                        # Kurze Pause für die Schiebe-Animation und das Nachladen der Daten
-                        await asyncio.sleep(0.5) 
-                print("Klicks abgeschlossen.")
+                        await asyncio.sleep(0.6) # Etwas langsamer klicken für Stabilität
+                print("Klicks erfolgreich ausgeführt.")
             else:
-                print("Hinweis: Pfeil-Button nicht gefunden. Scrape nur sichtbare Daten.")
+                print("FEHLER: Kein Pfeil-Button gefunden. Erstelle Screenshot zur Analyse.")
+                await page.screenshot(path="/usr/src/app/debug_no_arrow.png")
+
 
             # DEEP-SCROLL (behalten wir bei, falls noch andere Seitenteile laden müssen)
             for i in range(2):
